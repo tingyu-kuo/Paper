@@ -13,6 +13,7 @@ import shutil
 import warnings
 
 from datetime import datetime
+from pathlib import Path
 
 
 class Namespace(object):
@@ -42,38 +43,25 @@ def set_deterministic(seed):
 
 def get_args():
     parser = argparse.ArgumentParser()
-    parser.add_argument('-c', '--config-file', required=True, type=str, help="xxx.yaml")
-    parser.add_argument('--debug', action='store_true')
-    parser.add_argument('--debug_subset_size', type=int, default=8)
+    parser.add_argument('-c', '--config-file', required=False, type=str, help="xxx.yaml", default=str(Path('configs', 'simsiam_cifar.yaml')))
     parser.add_argument('--download', action='store_true', help="if can't find dataset, download from web")
     parser.add_argument('--data_dir', type=str, default=os.getenv('DATA'))
     parser.add_argument('--log_dir', type=str, default=os.getenv('LOG'))
     parser.add_argument('--ckpt_dir', type=str, default=os.getenv('CHECKPOINT'))
     parser.add_argument('--device', type=str, default='cuda' if torch.cuda.is_available() else 'cpu')
-    parser.add_argument('--eval_from', type=str, default=None)
-    parser.add_argument('--hide_progress', action='store_true')
     args = parser.parse_args()
 
 
     with open(args.config_file, 'r') as f:
         for key, value in Namespace(yaml.load(f, Loader=yaml.FullLoader)).__dict__.items():
+            # 把 config 內容存進args
             vars(args)[key] = value
 
-    if args.debug:
-        if args.train: 
-            args.train.batch_size = 2
-            args.train.num_epochs = 1
-            args.train.stop_at_epoch = 1
-        if args.eval: 
-            args.eval.batch_size = 2
-            args.eval.num_epochs = 1 # train only one epoch
-        args.dataset.num_workers = 0
+    # assert not None in [args.log_dir, args.data_dir, args.ckpt_dir, args.name]
 
-
-    assert not None in [args.log_dir, args.data_dir, args.ckpt_dir, args.name]
-
-    args.log_dir = os.path.join(args.log_dir, 'in-progress_'+datetime.now().strftime('%m%d%H%M%S_')+args.name)
-
+    args.log_dir = os.path.join(args.log_dir, 'in-progress_'+datetime.now().strftime('%m%d_')+args.name)
+    if os.path.exists(args.log_dir):
+        shutil.rmtree(args.log_dir)
     os.makedirs(args.log_dir, exist_ok=False)
     print(f'creating file {args.log_dir}')
     os.makedirs(args.ckpt_dir, exist_ok=True)
@@ -90,7 +78,6 @@ def get_args():
         'dataset':args.dataset.name,
         'data_dir': args.data_dir,
         'download':args.download,
-        'debug_subset_size': args.debug_subset_size if args.debug else None,
     }
     vars(args)['dataloader_kwargs'] = {
         'drop_last': True,

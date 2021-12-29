@@ -1,47 +1,45 @@
 import torch
 import numpy as np
-# from torch.optim.lr_scheduler import _LRScheduler
+import math
 
+def adjust_learning_rate(optimizer, init_lr, epoch, args, warmup=True):
+    final_lr = args.train.final_lr
+    # Setting  schedule function
+    if warmup:
+        warmup_epochs = args.train.warmup_epochs
+        warmup_lr = args.train.warmup_lr
+        if epoch < warmup_epochs:
+            cur_lr = warmup_lr + (init_lr - warmup_lr) * ((epoch + 1) / warmup_epochs)
+        else:
+            cur_lr = final_lr + (init_lr - final_lr) * 0.5 * (1. + math.cos(math.pi * (epoch - warmup_epochs) / (args.train.num_epochs - warmup_epochs)))
+    else:
+        cur_lr = final_lr + (init_lr - final_lr) * 0.5 * (1. + math.cos(math.pi * epoch / args.train.num_epochs))
 
-class LR_Scheduler(object):
-    def __init__(self, optimizer, warmup_epochs, warmup_lr, num_epochs, base_lr, final_lr, iter_per_epoch, constant_predictor_lr=False):
-        self.base_lr = base_lr
-        self.constant_predictor_lr = constant_predictor_lr
-        warmup_iter = iter_per_epoch * warmup_epochs
-        warmup_lr_schedule = np.linspace(warmup_lr, base_lr, warmup_iter)
-        decay_iter = iter_per_epoch * (num_epochs - warmup_epochs)
-        cosine_lr_schedule = final_lr+0.5*(base_lr-final_lr)*(1+np.cos(np.pi*np.arange(decay_iter)/decay_iter))
-        
-        self.lr_schedule = np.concatenate((warmup_lr_schedule, cosine_lr_schedule))
-        self.optimizer = optimizer
-        self.iter = 0
-        self.current_lr = 0
-    def step(self):
-        for param_group in self.optimizer.param_groups:
+    # Checking if fix_lr
+    for param_group in optimizer.param_groups:
+        if 'fix_lr' in param_group and param_group['fix_lr']:
+            param_group['lr'] = init_lr
+        else:
+            param_group['lr'] = cur_lr
+    return cur_lr
 
-            if self.constant_predictor_lr and param_group['name'] == 'predictor':
-                param_group['lr'] = self.base_lr
-            else:
-                lr = param_group['lr'] = self.lr_schedule[self.iter]
-        
-        self.iter += 1
-        self.current_lr = lr
-        return lr
-    def get_lr(self):
-        return self.current_lr
 
 if __name__ == "__main__":
+    # python optimizers/lr_scheduler.py --data_dir ../Data/ --log_dir ../logs/ -c configs/simsiam_cifar.yaml --ckpt_dir ~/.cache/
+    # Testing
     import torchvision
+    from arguments import get_args
+    import matplotlib.pyplot as plt
+
     model = torchvision.models.resnet50()
     optimizer = torch.optim.SGD(model.parameters(), lr=999)
-    epochs = 100
-    n_iter = 1000
-    scheduler = LR_Scheduler(optimizer, 10, 1, epochs, 3, 0, n_iter)
-    import matplotlib.pyplot as plt
+    args = get_args()
+    n_iter = 390
+    
     lrs = []
-    for epoch in range(epochs):
+    for epoch in range(args.train.num_epochs):
         for it in range(n_iter):
-            lr = scheduler.step()
+            lr = adjust_learning_rate(optimizer, 0.01, epoch, args)
             lrs.append(lr)
     plt.plot(lrs)
     plt.show()
