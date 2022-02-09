@@ -1,18 +1,18 @@
 import os
+import numpy as np
 import torch
 import torchvision.models as models
 from tqdm import tqdm
 from arguments import get_args
 from augmentations import get_aug
-# from optimizers import get_optimizer, LR_Scheduler
 from tools import Logger, knn_monitor
 from datasets import get_dataset
 from datetime import datetime
-from models.simsiam import SimSiam
-from apex import amp
+from models.siamese import Siamese
+# from apex import amp
 from optimizers.lr_scheduler import adjust_learning_rate
-from models import get_model
-from models.backbones import cifar_resnet_1
+from models.backbones import cifar_resnet_1 as resnet
+from linear_eval import main as linear_eval
 
 
 def main(args):
@@ -26,7 +26,15 @@ def main(args):
         batch_size=args.train.batch_size,
         **args.dataloader_kwargs
     )
-
+    memory_loader = torch.utils.data.DataLoader(
+        dataset=get_dataset(
+            transform=get_aug(train=False, train_classifier=False, **args.aug_kwargs), 
+            train=True,
+            **args.dataset_kwargs),
+        shuffle=False,
+        batch_size=args.train.batch_size,
+        **args.dataloader_kwargs
+    )
     test_loader = torch.utils.data.DataLoader(
         dataset=get_dataset(
             transform=get_aug(train=False, train_classifier=False, **args.aug_kwargs), 
@@ -38,91 +46,59 @@ def main(args):
     )
 
     # define model
-    model = SimSiam(backbone=cifar_resnet_1.resnet18()).to(device) # zero_init_residual=True
+    # model = SimSiam(backbone=resnet.__dict__[args.model.backbone]()).to(device)
+    model = Siamese(model=resnet.__dict__[args.model.backbone](pretrained=False)).to(device)
 
     # define initial learning rate optimizer
-    # If using DataParallel (for multi gpu), then params needed 'model.module.parameters()', else 'model.parameters()' 
+    opt_params = [
+        {'params': model.backbone.parameters(), 'fix_lr':False},
+        {'params': model.projector.parameters(), 'fix_lr':False},
+        {'params': model.predictor.parameters(), 'fix_lr':True}
+    ]
     init_lr = args.train.base_lr * args.train.batch_size / 128
-    optim_params = [{'params': model.backbone.parameters(), 'fix_lr': False},
-                    {'params': model.projector.parameters(), 'fix_lr': False},
-                    {'params': model.predictor.parameters(), 'fix_lr': True}]
-    # optim_params = [{'params': model.module.encoder.parameters(), 'fix_lr': False},
-    #                 {'params': model.module.predictor.parameters(), 'fix_lr': True}]
-
     optimizer = torch.optim.SGD(
-        optim_params,
+        opt_params,
         lr=init_lr,
         momentum=args.train.optimizer.momentum,
         weight_decay=args.train.optimizer.weight_decay
     )
     logger = Logger(tensorboard=args.logger.tensorboard, matplotlib=args.logger.matplotlib, log_dir=args.log_dir)
     
-    global_progress = tqdm(range(0, args.train.stop_at_epoch), desc=f'Training')
-    # model, optimizer = amp.initialize(model, optimizer, opt_level='O1')
+    global_progress = tqdm(range(args.train.stop_at_epoch), desc=f'Training')
 
     start_time = datetime.now().strftime('%m%d')
-    max_acc = 0
 
     for epoch in global_progress:
         # training
         model.train()
-        train_acc = 0 
         local_progress=tqdm(train_loader, desc=f'Epoch {epoch+1}/{args.train.num_epochs}', disable=True) 
-        for idx, ((images1, images2), labels) in enumerate(local_progress):
+        for idx, ((image1, image2), labels) in enumerate(local_progress):
 
             lr = adjust_learning_rate(optimizer, init_lr, epoch, args, warmup=False)
             optimizer.zero_grad()
-            loss, l, acc = model.forward(  # if pin_memory=True => non_blocking=True, in order to speed up 
-                images1.to(device, non_blocking=True),
-                images2.to(device, non_blocking=True),
-                labels.to(device)
+            loss = model.forward(  # if pin_memory=True => non_blocking=True, in order to speed up 
+                image1.to(device, non_blocking=True),
+                image2.to(device, non_blocking=True),
+                # image3.to(device, non_blocking=True)
                 )
-            
-            # loss, acc = model.baseline(
-            #     images1.float().to(device, non_blocking=True),
-            #     labels.to(device)
-            # )
 
-
-            # with amp.scale_loss(loss, optimizer) as scaled_loss:
-            #     scaled_loss.backward()
             loss.backward()
             optimizer.step()
             
             data_dict = ({'lr':lr, 'loss':loss})
-            train_acc += acc
+
 
             local_progress.set_postfix(data_dict)
             logger.update_scalers(data_dict)
-
-        train_acc = (train_acc / (idx + 1))*100
-
-        # testing
-        model.eval()
-        test_acc = 0
-        for idx, (images, labels) in enumerate(test_loader):
-
-            with torch.no_grad():
-                acc = model.valid(images.to(device, non_blocking=True), labels.to(device))
-            test_acc += acc
-
-        test_acc = (test_acc / (idx + 1))*100
-        if test_acc > max_acc:
-            max_acc = test_acc
-            # Save checkpoint
-            model_path = os.path.join(args.ckpt_dir, f"{args.name}_{start_time}.pth")
-            torch.save({
-                'epoch': epoch+1,
-                'accuracy': f'{max_acc:.1f}',
-                'state_dict':model.backbone.state_dict()
-            }, model_path)
+        if args.train.knn_monitor and epoch % args.train.knn_interval == 0: 
+            accuracy = knn_monitor(model, memory_loader, test_loader, device, k=min(args.train.knn_k, len(memory_loader.dataset)), hide_progress=True)
 
         # update training info
-        epoch_dict = {"epoch":epoch, "train_acc":train_acc, "test_acc":test_acc, "best_acc":max_acc, "Simsiam":l[0].item(), "Xent":l[1].item()}
+        epoch_dict = {"epoch":epoch, "accuracy":accuracy}
         global_progress.set_postfix(epoch_dict)
-        logger.update_scalers({k:epoch_dict[k] for k in ["epoch", "train_acc", "test_acc"]})    #　update scalers without max accuracy
+        logger.update_scalers(epoch_dict)    #　update scalers without max accuracy
+    linear_eval(args, model)
 
-    os.rename(model_path, f"{args.name}_{start_time}_{max_acc}.pth")
 
 if __name__ == "__main__":
     args = get_args()

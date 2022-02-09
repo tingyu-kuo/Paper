@@ -10,7 +10,7 @@ def knn_monitor(net, memory_data_loader, test_data_loader, epoch, k=200, t=0.1, 
     with torch.no_grad():
         # generate feature bank
         for data, target in tqdm(memory_data_loader, desc='Feature extracting', leave=False, disable=hide_progress):
-            feature = net(data.cuda(non_blocking=True))
+            feature = net.encoder_eval(data.cuda(non_blocking=True))
             feature = F.normalize(feature, dim=1)
             feature_bank.append(feature)
         # [D, N]
@@ -21,7 +21,7 @@ def knn_monitor(net, memory_data_loader, test_data_loader, epoch, k=200, t=0.1, 
         test_bar = tqdm(test_data_loader, desc='kNN', disable=hide_progress)
         for data, target in test_bar:
             data, target = data.cuda(non_blocking=True), target.cuda(non_blocking=True)
-            feature = net(data)
+            feature = net.encoder_eval(data)
             feature = F.normalize(feature, dim=1)
             
             pred_labels = knn_predict(feature, feature_bank, feature_labels, classes, k, t)

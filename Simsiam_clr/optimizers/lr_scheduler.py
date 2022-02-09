@@ -2,8 +2,8 @@ import torch
 import numpy as np
 import math
 
-def adjust_learning_rate(optimizer, init_lr, epoch, args, warmup=True):
-    final_lr = args.train.final_lr
+def adjust_learning_rate(optimizer, init_lr, epoch, args, warmup=False):
+    final_lr = float(args.train.final_lr)
     # Setting  schedule function
     if warmup:
         warmup_epochs = args.train.warmup_epochs

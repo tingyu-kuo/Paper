@@ -1,17 +1,12 @@
 import argparse
 import os
 import torch
-
 import numpy as np
 import torch
 import random
-
 import re 
 import yaml
-
 import shutil
-import warnings
-
 from datetime import datetime
 
 
@@ -72,8 +67,9 @@ def get_args():
 
     assert not None in [args.log_dir, args.data_dir, args.ckpt_dir, args.name]
 
-    args.log_dir = os.path.join(args.log_dir, 'in-progress_'+datetime.now().strftime('%m%d%H%M%S_')+args.name)
-
+    args.log_dir = os.path.join(args.log_dir, 'in-progress_'+datetime.now().strftime('%m%d%H_')+args.name)
+    if os.path.exists(args.log_dir):
+        shutil.rmtree(args.log_dir)
     os.makedirs(args.log_dir, exist_ok=False)
     print(f'creating file {args.log_dir}')
     os.makedirs(args.ckpt_dir, exist_ok=True)

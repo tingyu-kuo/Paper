@@ -1,5 +1,4 @@
-name: simsiam-cifar100-experiment-resnet18_cifar_variant1
-# name: resnet18
+name: CutMixSiam-cifar100
 dataset: 
   name: cifar100
   image_size: 32
@@ -7,9 +6,7 @@ dataset:
 
 model: 
   name: simsiam
-  backbone: resnet18_cifar_variant1
-  # backbone: resnet18
-  proj_layers: 2  # 2 or 3 only
+  backbone: resnet18
 
 train:
   optimizer: 
@@ -19,13 +16,13 @@ train:
   warmup_epochs: 10
   warmup_lr: 0
   base_lr: 0.05
-  final_lr: 0.000001
-  num_epochs: 800 # this parameter influence the lr decay
-  stop_at_epoch: 800 # has to be smaller than num_epochs
+  final_lr: 1e-8
+  num_epochs: 400 # this parameter influence the lr decay
+  stop_at_epoch: 400
   batch_size: 128
   knn_monitor: True # knn monitor will take more time
   knn_interval: 1
-  knn_k: 400
+  knn_k: 300
 eval: # linear evaluation, False will turn off automatic evaluation after training
   optimizer: 
     name: sgd
@@ -36,8 +33,7 @@ eval: # linear evaluation, False will turn off automatic evaluation after traini
   base_lr: 30
   final_lr: 0
   batch_size: 128
-  num_epochs: 500
-
+  num_epochs: 200
 logger:
   tensorboard: True
   matplotlib: True
