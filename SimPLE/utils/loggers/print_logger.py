@@ -47,7 +47,7 @@ class PrintLogger(Logger):
                 if hasattr(fig, "show"):
                     fig.show()
 
-        output_str = sep.join(f"{str(key)}: {str(val)}" for key, val in log_info.items())
+        output_str = sep.join(f"{str(key)}: {val:.4f}" for key, val in log_info.items())
         if step is not None:
             print(f"Step {step}:\n\t{output_str}", file=file, flush=flush)
         else:

@@ -110,6 +110,7 @@ class MixMatchBase:
 
     def postprocess(self,
                     x_augmented: Tensor,
+                    x_strong_augmented: Tensor,
                     x_targets_one_hot: Tensor,
                     u_augmented: List[Tensor],
                     q_guess: Tensor,
@@ -121,6 +122,7 @@ class MixMatchBase:
         assert len(u_augmented) == len(q_guess) == len(q_true)
 
         return self.mixup(x_augmented=x_augmented,
+                          x_strong_augmented=x_strong_augmented,
                           x_targets_one_hot=x_targets_one_hot,
                           u_augmented=u_augmented,
                           q_guess=q_guess,

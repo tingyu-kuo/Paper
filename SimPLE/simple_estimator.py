@@ -238,15 +238,18 @@ class SimPLEEstimator:
     def training_step(self, batch: Tuple[Tuple[Tensor, Tensor], ...], batch_idx: int) -> Tuple[Tensor, LossInfoType]:
         outputs = self.preprocess_batch(batch, batch_idx)
 
-        model_outputs = self.compute_train_logits(x_inputs=outputs["x_inputs"], u_inputs=outputs["u_inputs"])
+        model_outputs = self.compute_train_logits(x_inputs=outputs["x_inputs"], x_strong_inputs=outputs["x_strong_inputs"], u_inputs=outputs["u_inputs"])
 
         outputs.update(model_outputs)
 
         # calculate loss
         loss, log_dict = self.compute_train_loss(
             x_logits=outputs["x_logits"],
+            x_features=outputs["x_features"],
+            x_strong_features=outputs["x_strong_features"],
             x_targets=outputs["x_targets"],
             u_logits=outputs["u_logits"],
+            u_features=outputs["u_features"],
             u_targets=outputs["u_targets"],
             u_true_targets=outputs["u_true_targets"])
 
@@ -308,35 +311,53 @@ class SimPLEEstimator:
 
         return dict(
             x_inputs=outputs["x_mixed"],
+            x_strong_inputs=outputs["x_strong_mixed"],
             x_targets=outputs["p_mixed"],
             u_inputs=outputs["u_mixed"],
             u_targets=outputs["q_mixed"],
             u_true_targets=outputs["q_true_mixed"],
         )
 
-    def compute_train_logits(self, x_inputs: Tensor, u_inputs: Tensor) -> Dict[str, Tensor]:
+    def compute_train_logits(self, x_inputs: Tensor, x_strong_inputs: Tensor, u_inputs: Tensor) -> Dict[str, Tensor]:
         batch_size = len(x_inputs)
 
         # interleave labeled and unlabeled samples between batches to get correct batch norm calculation
-        batch_outputs = [x_inputs, *torch.split(u_inputs, batch_size, dim=0)]
+        batch_outputs = [x_inputs, x_strong_inputs, *torch.split(u_inputs, batch_size, dim=0)]
         batch_outputs = interleave(batch_outputs, batch_size)
+        batch_outputs = [self.model(batch_output, return_feature=True) for batch_output in batch_outputs]
 
-        batch_outputs = [self.model(batch_output) for batch_output in batch_outputs]
-
-        # put interleaved samples back
-        batch_outputs = interleave(batch_outputs, batch_size)
-        x_logits = batch_outputs[0]
-        u_logits = torch.cat(batch_outputs[1:], dim=0)
-
+        # put interleaved samples back (one for logits and another for features)
+        logit_batch_outputs, feature_batch_outputs = [], []
+        for i in range(len(batch_outputs)):
+            feature_batch_outputs.append(batch_outputs[i][0])
+            logit_batch_outputs.append(batch_outputs[i][1])
+            
+        logit_batch_outputs = interleave(logit_batch_outputs, batch_size)
+        feature_batch_outputs = interleave(feature_batch_outputs, batch_size)
+        
+        x_logits = logit_batch_outputs[0]
+        x_strong_logits = logit_batch_outputs[1]
+        u_logits = torch.cat(logit_batch_outputs[2:], dim=0)
+        u_features = torch.cat(feature_batch_outputs[2:], dim=1).view(len(feature_batch_outputs[2:]), batch_size, feature_batch_outputs[0].size(1))
+        x_features = feature_batch_outputs[0]
+        x_strong_features = feature_batch_outputs[1]
+        
         return dict(
             x_logits=x_logits,
+            x_strong_logits=x_strong_logits,
             u_logits=u_logits,
+            u_features=u_features,
+            x_features=x_features,
+            x_strong_features=x_strong_features
         )
 
     def compute_train_loss(self,
                            x_logits: Tensor,
+                           x_features: Tensor,
+                           x_strong_features: Tensor,
                            x_targets: Tensor,
                            u_logits: Tensor,
+                           u_features: Tensor,
                            u_targets: Tensor,
                            u_true_targets: Tensor) -> Tuple[Tensor, LossInfoType]:
         """
@@ -365,7 +386,18 @@ class SimPLEEstimator:
         ramp_up_value = self.ramp_up(current=self.global_step)
 
         loss = loss_x
-
+        
+        # Self-supervised loss
+        # similarity = 1. - F.cosine_similarity(x_features, x_strong_features, dim=1).mean()
+        similarity = F.cosine_similarity(
+            u_features.unsqueeze(0),
+            u_features.unsqueeze(0).transpose(0,1),
+            dim=3
+        ).mean(2)
+        labels = torch.ones_like(similarity)
+        similarity_loss = labels - similarity
+        loss += similarity_loss.sum() / (u_features.size(0)-1) / u_features.size(0)
+        
         if self.lambda_u != 0:
             weighted_loss_u, loss_u_log = self.compute_unsupervised_loss(logits=u_logits,
                                                                          probs=u_probs,

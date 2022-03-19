@@ -46,7 +46,7 @@ def get_arg_parser() -> argparse.ArgumentParser:
     # Network params
     parser.add_argument('--num-epochs',
                         dest="num_epochs",
-                        default=1024,
+                        default=300,
                         type=int,
                         help='number of total training epochs')
 

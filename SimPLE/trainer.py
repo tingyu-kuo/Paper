@@ -22,6 +22,8 @@ from utils.dataset import SSLDataModule
 from loss.types import LossInfoType
 from utils.types import BatchGeneratorType
 from models.types import LRSchedulerType
+from datetime import datetime
+import os
 
 IS_DISTRIBUTED_AVAILABLE = distributed.is_available()
 
@@ -33,6 +35,13 @@ class Trainer:
         self._validation_loader: Optional[DataLoader] = None
         self._labeled_train_loader: Optional[DataLoader] = None
         self._unlabeled_train_loader: Optional[DataLoader] = None
+        
+        # initial test accuracy logs
+        starttime: str = datetime.now().strftime('%m%d%H%M')
+        self.logs = os.path.join('logs', ('logs_' + starttime + '.txt'))
+        self.dataset_name = estimator.exp_args.dataset
+        self.n_epoch = 1
+        self.init_logs()
 
         # assign estimator and intermediate variables
         self._estimator = estimator
@@ -65,7 +74,11 @@ class Trainer:
                                      latest_checkpoint_str="latest@step-{global_step}.pth",
                                      latest_checkpoint_pattern=r"latest@step-(\d+)\.pt",
                                      delayed_best_model_saving=True)
-
+    
+    def init_logs(self):
+        with open(self.logs, 'a') as f:
+            print(f'{self.dataset_name}', file=f)
+    
     @property
     def exp_args(self) -> Namespace:
         return self._exp_args
@@ -459,7 +472,11 @@ class Trainer:
             # log test loss and accuracy
             log_info = self.validation_epoch(self.test_loader, desc="Test")
             self.logger.log(log_info, prefix="test", step=self.global_step)
-
+            
+            with open(self.logs, 'a') as f:
+                print(f'Epoch: {self.n_epoch}\tTest accuracy: {log_info["top1_acc"]:.4f}', file=f)
+            self.n_epoch += 1
+            
     def save_checkpoint(self,
                         checkpoint: Dict[str, Any],
                         checkpoint_path: str,

@@ -47,25 +47,30 @@ class SimPLE(MixMatchBase):
             x_inputs = x_strong_augmented
         else:
             x_inputs = x_augmented
+        
         u_inputs = u_strong_augmented
 
         # label guessing with weakly augmented data
         pseudo_label_dict = self.guess_label(u_inputs=u_augmented, model=model)
 
         return self.postprocess(x_augmented=x_inputs,
+                                x_strong_augmented = x_strong_augmented,
                                 x_targets_one_hot=x_targets_one_hot,
                                 u_augmented=u_inputs,
                                 q_guess=pseudo_label_dict["q_guess"],
                                 u_true_targets_one_hot=u_true_targets_one_hot)
-
+    
+    # cover mixup function from MixMatchBase
     def mixup(self,
               x_augmented: Tensor,
+              x_strong_augmented: Tensor,
               x_targets_one_hot: Tensor,
               u_augmented: Tensor,
               q_guess: Tensor,
               q_true: Tensor) -> Dict[str, Tensor]:
         # SimPLE do not use mixup
         return dict(x_mixed=x_augmented,
+                    x_strong_mixed=x_strong_augmented,
                     p_mixed=x_targets_one_hot,
                     u_mixed=u_augmented,
                     q_mixed=q_guess,

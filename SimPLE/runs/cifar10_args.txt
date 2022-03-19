@@ -1,7 +1,7 @@
 -e
 simple
 --num-epochs
-256
+300
 --dataset
 cifar10
 --K-strong
