@@ -1,11 +1,13 @@
 -e
 simple
+--num-epochs
+300
 --dataset
 cifar100
 --K-strong
-4
+7
 --labeled-train-size
-10000
+2500
 --lr
 0.03
 --weight-decay
@@ -14,6 +16,8 @@ cifar100
 150
 --lambda-pair
 150
+--lambda-s
+3
 --conf-threshold
 0.95
 --sim-threshold

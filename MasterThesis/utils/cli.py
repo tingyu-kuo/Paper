@@ -46,7 +46,7 @@ def get_arg_parser() -> argparse.ArgumentParser:
     # Network params
     parser.add_argument('--num-epochs',
                         dest="num_epochs",
-                        default=300,
+                        default=1024,
                         type=int,
                         help='number of total training epochs')
 
@@ -184,6 +184,18 @@ def get_arg_parser() -> argparse.ArgumentParser:
                         default=75.,
                         type=float,
                         help="weight for unlabeled loss")
+                        
+    parser.add_argument('--lambda-s',
+                        dest="lambda_s",
+                        default=5.,
+                        type=float,
+                        help="weight for self-supervised loss")
+                        
+    parser.add_argument('--num-sim-warmup-epoch',
+                        dest="num_sim_warmup_epoch",
+                        default=20.,
+                        type=float,
+                        help="warnup epoch for weight of self-supervised loss")
 
     parser.add_argument('--mixmatch-type',
                         dest="mixmatch_type",
@@ -753,7 +765,10 @@ def generate_logger_run_name(args: Namespace) -> str:
 
     if args.estimator == "simple" and args.lambda_pair == 0:
         logger_run_name += " Baseline"
-
+        
+    if args.lambda_s != 0:
+        logger_run_name += " IALoss"
+        
     if args.strong_augmenter_type in augmenter_type_name_map:
         logger_run_name += f" {augmenter_type_name_map[args.strong_augmenter_type]}"
 

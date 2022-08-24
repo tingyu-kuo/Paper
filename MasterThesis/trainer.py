@@ -24,6 +24,8 @@ from utils.types import BatchGeneratorType
 from models.types import LRSchedulerType
 from datetime import datetime
 import os
+from utils import get_args
+import shutil
 
 IS_DISTRIBUTED_AVAILABLE = distributed.is_available()
 
@@ -36,12 +38,12 @@ class Trainer:
         self._labeled_train_loader: Optional[DataLoader] = None
         self._unlabeled_train_loader: Optional[DataLoader] = None
         
-        # initial test accuracy logs
+
+
         starttime: str = datetime.now().strftime('%m%d%H%M')
-        self.logs = os.path.join('logs', ('logs_' + starttime + '.txt'))
         self.dataset_name = estimator.exp_args.dataset
         self.n_epoch = 1
-        self.init_logs()
+        #self.init_logs()
 
         # assign estimator and intermediate variables
         self._estimator = estimator
@@ -64,7 +66,14 @@ class Trainer:
 
         self.logger = get_logger(self.exp_args)
         self.logger.watch(self.get_model(), log='all')
-
+        
+        # initial test accuracy logs
+        self.save_log_path = self.exp_args.log_dir
+        config_name = "runs/" + self.dataset_name + "_args.txt"
+        setting_name = self.save_log_path + "/settings.txt"
+        shutil.copyfile(config_name, setting_name)
+        self.logs = os.path.join(self.save_log_path, ('logs_' + starttime + '.txt'))
+        
         # setup checkpoint saver
         self.saver = CheckpointSaver(estimator=self.estimator,
                                      logger=self.logger,
@@ -74,10 +83,11 @@ class Trainer:
                                      latest_checkpoint_str="latest@step-{global_step}.pth",
                                      latest_checkpoint_pattern=r"latest@step-(\d+)\.pt",
                                      delayed_best_model_saving=True)
-    
+    """
     def init_logs(self):
         with open(self.logs, 'a') as f:
-            print(f'{self.dataset_name}', file=f)
+            print(f'{self.dataset_name}\t{self.exp_args.}', file=f)
+    """
     
     @property
     def exp_args(self) -> Namespace:

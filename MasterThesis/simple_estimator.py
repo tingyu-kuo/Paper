@@ -35,6 +35,7 @@ class SimPLEEstimator:
                  in_channels: int,
                  device: Optional[torch.device] = None):
         self.exp_args = exp_args
+        self.sim_avg = 0.
 
         # augmenter
         self.augmenter = augmenter
@@ -103,7 +104,10 @@ class SimPLEEstimator:
 
         # move to device
         self.to(self.device)
-
+    @property
+    def total_warnup_steps(self) -> int:
+        return self.exp_args.num_sim_warmup_epoch * self.exp_args.num_step_per_epoch
+        
     @property
     def device(self) -> torch.device:
         return self._device
@@ -129,7 +133,7 @@ class SimPLEEstimator:
     @property
     def num_warmup_epochs(self) -> int:
         return self.exp_args.num_warmup_epochs
-
+    
     @num_warmup_epochs.setter
     def num_warmup_epochs(self, num_warmup_epochs: int) -> None:
         assert num_warmup_epochs >= 0
@@ -238,15 +242,13 @@ class SimPLEEstimator:
     def training_step(self, batch: Tuple[Tuple[Tensor, Tensor], ...], batch_idx: int) -> Tuple[Tensor, LossInfoType]:
         outputs = self.preprocess_batch(batch, batch_idx)
 
-        model_outputs = self.compute_train_logits(x_inputs=outputs["x_inputs"], x_strong_inputs=outputs["x_strong_inputs"], u_inputs=outputs["u_inputs"])
+        model_outputs = self.compute_train_logits(x_inputs=outputs["x_inputs"], u_inputs=outputs["u_inputs"])
 
         outputs.update(model_outputs)
 
         # calculate loss
         loss, log_dict = self.compute_train_loss(
             x_logits=outputs["x_logits"],
-            x_features=outputs["x_features"],
-            x_strong_features=outputs["x_strong_features"],
             x_targets=outputs["x_targets"],
             u_logits=outputs["u_logits"],
             u_features=outputs["u_features"],
@@ -311,18 +313,18 @@ class SimPLEEstimator:
 
         return dict(
             x_inputs=outputs["x_mixed"],
-            x_strong_inputs=outputs["x_strong_mixed"],
             x_targets=outputs["p_mixed"],
             u_inputs=outputs["u_mixed"],
             u_targets=outputs["q_mixed"],
             u_true_targets=outputs["q_true_mixed"],
         )
 
-    def compute_train_logits(self, x_inputs: Tensor, x_strong_inputs: Tensor, u_inputs: Tensor) -> Dict[str, Tensor]:
+    def compute_train_logits(self, x_inputs: Tensor, u_inputs: Tensor) -> Dict[str, Tensor]:
         batch_size = len(x_inputs)
 
+
         # interleave labeled and unlabeled samples between batches to get correct batch norm calculation
-        batch_outputs = [x_inputs, x_strong_inputs, *torch.split(u_inputs, batch_size, dim=0)]
+        batch_outputs = [x_inputs, *torch.split(u_inputs, batch_size, dim=0)]
         batch_outputs = interleave(batch_outputs, batch_size)
         batch_outputs = [self.model(batch_output, return_feature=True) for batch_output in batch_outputs]
 
@@ -335,26 +337,26 @@ class SimPLEEstimator:
         logit_batch_outputs = interleave(logit_batch_outputs, batch_size)
         feature_batch_outputs = interleave(feature_batch_outputs, batch_size)
         
+        k_strong = len(feature_batch_outputs[1:])
+        feature_dim = feature_batch_outputs[0].size(1)
+
         x_logits = logit_batch_outputs[0]
-        x_strong_logits = logit_batch_outputs[1]
-        u_logits = torch.cat(logit_batch_outputs[2:], dim=0)
-        u_features = torch.cat(feature_batch_outputs[2:], dim=1).view(len(feature_batch_outputs[2:]), batch_size, feature_batch_outputs[0].size(1))
         x_features = feature_batch_outputs[0]
-        x_strong_features = feature_batch_outputs[1]
+        u_logits = torch.cat(logit_batch_outputs[1:], dim=0)
+        u_features = torch.cat(feature_batch_outputs[1:], dim=1).view(k_strong, batch_size, feature_dim)
         
         return dict(
             x_logits=x_logits,
-            x_strong_logits=x_strong_logits,
             u_logits=u_logits,
             u_features=u_features,
-            x_features=x_features,
-            x_strong_features=x_strong_features
         )
+        
+    @property
+    def usage_digits_num(self):
+        return self.exp_args.k_strong * (self.exp_args.k_strong-1)
 
     def compute_train_loss(self,
                            x_logits: Tensor,
-                           x_features: Tensor,
-                           x_strong_features: Tensor,
                            x_targets: Tensor,
                            u_logits: Tensor,
                            u_features: Tensor,
@@ -387,16 +389,34 @@ class SimPLEEstimator:
 
         loss = loss_x
         
-        # Self-supervised loss
-        # similarity = 1. - F.cosine_similarity(x_features, x_strong_features, dim=1).mean()
-        similarity = F.cosine_similarity(
-            u_features.unsqueeze(0),
-            u_features.unsqueeze(0).transpose(0,1),
-            dim=3
-        ).mean(2)
-        labels = torch.ones_like(similarity)
-        similarity_loss = labels - similarity
-        loss += similarity_loss.sum() / (u_features.size(0)-1) / u_features.size(0)
+        if self.exp_args.lambda_s != 0:
+            # Intra-augmentation Loss
+            similarity_loss_matrix = 1. - F.cosine_similarity(
+                u_features.unsqueeze(0),
+                u_features.unsqueeze(0).transpose(0,1),
+                dim=3
+            ).mean(2)
+            similarity_loss = similarity_loss_matrix.sum() / self.usage_digits_num
+            #similarity_loss = similarity_loss_matrix.max(0).values.mean()
+            self.sim_avg += similarity_loss
+            
+            total_warnup_steps = self.exp_args.num_sim_warmup_epoch * self.exp_args.num_step_per_epoch
+            p = min(1., self.global_step/self.total_warnup_steps)
+            v = p * self.exp_args.lambda_s
+            
+            
+            """
+            with open('logs/record.txt', 'a') as f:
+                f.write(f'sim loss:{similarity_loss:.4f}\tstd:{std_mean:.4f}\tXent:{loss_x:.4f}\n')
+            """
+            
+            if self.global_step % self.exp_args.num_step_per_epoch == 0:
+                print(f"Mean feature similarity: {self.sim_avg/self.exp_args.num_step_per_epoch}")
+                self.sim_avg = 0.
+            
+            loss += v * similarity_loss
+
+        
         
         if self.lambda_u != 0:
             weighted_loss_u, loss_u_log = self.compute_unsupervised_loss(logits=u_logits,

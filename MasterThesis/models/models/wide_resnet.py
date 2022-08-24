@@ -223,6 +223,7 @@ class WideResNet(nn.Module):
         self.relu = nn.LeakyReLU(negative_slope=0.1, inplace=True)
         # self.pool = nn.AvgPool2d(kernel_size=8)
         self.pool = nn.AdaptiveAvgPool2d(output_size=1)
+        self.dropout = nn.Dropout(0.2)
         self.fc = nn.Linear(self.fc_in_features, out_channels)
 
         # initialization
@@ -246,6 +247,7 @@ class WideResNet(nn.Module):
         outputs = self.bn(outputs)
         outputs = self.relu(outputs)
         outputs = self.pool(outputs)
+        #outputs = self.dropout(outputs)
         # outputs = outputs.view(-1, self.n_channels[3])
         features = outputs.view(outputs.size(0), -1)
 
