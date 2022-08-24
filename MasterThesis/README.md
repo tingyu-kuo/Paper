@@ -4,7 +4,7 @@
 ## Method Comparison on two datasets
 |                    |       CIFAR-10 (4000 labels)      |       CIFAR-100 (10000 labels)    |
 |:------------------:|:-------------------:|:-------------------:|
-|        Method      |     Accuracy (%)    |     Accuracy (%)    |
+|        **Method**      |     **Accuracy (%)**    |     **Accuracy (%)**    |
 |       MixMatch     |         93.76       |         71.69       |
 |      ReMixMatch    |         94.86       |         76.97       |
 |       FixMatch     |         95.69       |         77.40       |
