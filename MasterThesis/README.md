@@ -2,7 +2,7 @@
 ## Enhancing Semi-Supervised Image Classification via Similar Pseudo Label and Feature Relationship<br>透過相似偽標籤和特徵關聯性增強半監督式影像分類
 ![image](https://user-images.githubusercontent.com/59983036/186312150-9707901f-aa44-4800-982e-5d39f05f684c.png)
 ## Method Comparison on two datasets
-|                    |       CIFAR-10      |       CIFAR-100     |
+|                    |       CIFAR-10 (4000 labels)      |       CIFAR-100 (10000 labels)    |
 |:------------------:|:-------------------:|:-------------------:|
 |        Method      |     Accuracy (%)    |     Accuracy (%)    |
 |       MixMatch     |         93.76       |         71.69       |
