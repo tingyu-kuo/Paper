@@ -17,3 +17,11 @@
 ## Visualization with CAM
 ![image](https://user-images.githubusercontent.com/59983036/186315923-67e651d0-ed1a-4887-8947-2294d0728d49.png)
 
+## Train on CIFAR-100
+```
+python main.py @runs/cifar100_args.txt
+```
+## Train on CIFAR-10
+```
+python main.py @runs/cifar10_args.txt
+```
