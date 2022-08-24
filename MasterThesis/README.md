@@ -18,7 +18,7 @@
 ![image](https://user-images.githubusercontent.com/59983036/186315923-67e651d0-ed1a-4887-8947-2294d0728d49.png)
 
 ## Implementation
-A PyTorch implementation for the thesis is following [**SimPLE**](https://github.com/zijian-hu/SimPLE)
+A PyTorch implementation for the thesis is following [**SimPLE**](https://github.com/zijian-hu/SimPLE).
 
 ## Training
 - Train on CIFAR-100:
