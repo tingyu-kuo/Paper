@@ -21,6 +21,7 @@
 A PyTorch implementation for the thesis is following [**SimPLE**](https://github.com/zijian-hu/SimPLE).
 
 ## Training
+Default usage dataset: Mini-Imagenet, CIFAR-100, CIFAR-10 and SVHN.
 - Train on CIFAR-100:
 ```
 python main.py @runs/cifar100_args.txt
