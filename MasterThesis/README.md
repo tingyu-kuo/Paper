@@ -15,5 +15,5 @@
 |   **Ours**  |         95.34       |   **79.11**  |
 
 ## Visualization with CAM
-![image](https://user-images.githubusercontent.com/59983036/186315923-67e651d0-ed1a-4887-8947-2294d0728d49.png)
+![image](https://user-images.githubusercontent.com/59983036/186315923-67e651d0-ed1a-4887-8947-2294d0728d49.png =100x100)
 
