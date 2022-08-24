@@ -1,3 +1,3 @@
 # Paper
 - MasterThesis
-- SimSiam_clr
+- Simsiam_clr
